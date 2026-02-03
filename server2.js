@@ -37,6 +37,10 @@ app.get("/laptop", (req, res) => {
   res.sendFile(path.join(__dirname, "static", "laptop.html"));
 });
 
+app.get("/laser", (req, res) => {
+  res.sendFile(path.join(__dirname, "static", "laser.html"));
+});
+
 app.post("/sensor", (req, res) => {
   if (req.body) {
     latestData = req.body;

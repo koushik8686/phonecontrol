@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>🎮 Controller</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: #e5e7eb;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 400px;
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            text-align: center;
+            margin-bottom: 20px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .btn {
+            padding: 15px;
+            border-radius: 12px;
+            border: none;
+            color: white;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.1s;
+            text-transform: uppercase;
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        #shoot-btn {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            width: 100%;
+            height: 80px;
+            font-size: 1.5rem;
+            box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4);
+        }
+
+        #recenter-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #94a3b8;
+            flex: 1;
+            font-size: 0.9rem;
+        }
+
+        .crosshair-container {
+            width: 100%;
+            height: 200px;
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 16px;
+            position: relative;
+            margin-bottom: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
+        }
+
+        #crosshair {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #ef4444;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            top: 50%;
+            left: 50%;
+            box-shadow: 0 0 15px #ef4444;
+        }
+
+        .status {
+            text-align: center;
+            font-size: 0.8rem;
+            color: #94a3b8;
+            margin-top: 10px;
+            height: 20px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: white;
+            text-align: center;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🧟 Zombie Controller</h1>
+
+        <input type="text" id="player-name" value="Player 1" placeholder="Name">
+
+        <div class="crosshair-container">
+            <div id="crosshair"></div>
+        </div>
+
+        <div class="controls-row">
+            <button id="recenter-btn" class="btn">🎯 Recenter</button>
+        </div>
+
+        <button id="shoot-btn" class="btn">🔥 FIRE</button>
+        <div class="status" id="status">Tap FIRE to start</div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const MAX_YAW = 50;   // Degrees of horizontal movement allowed
+        const MAX_PITCH = 35; // Degrees of vertical movement allowed
+
+        // --- State ---
+        let playerId = null;
+        let playerColor = "#ef4444";
+
+        let centerAlpha = null;
+        let centerBeta = null;
+        let currentAlpha = 0;
+        let currentBeta = 0;
+
+        // Calculated normalized coordinates (0.0 to 1.0)
+        let cursorX = 0.5;
+        let cursorY = 0.5;
+
+        let isRunning = false;
+
+        // --- Elements ---
+        const crosshair = document.getElementById('crosshair');
+        const statusEl = document.getElementById('status');
+        const shootBtn = document.getElementById('shoot-btn');
+        const recenterBtn = document.getElementById('recenter-btn');
+        const container = document.querySelector('.crosshair-container');
+        const playerNameInput = document.getElementById('player-name');
+
+        // --- Utils ---
+        function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+
+        // --- Core Orientation Logic ---
+        function handleOrientation(event) {
+            // Standardize: alpha (compass 0-360), beta (tilt front-back -180 to 180)
+            const alpha = event.alpha || 0;
+            const beta = event.beta || 0;
+
+            // Save raw for recentering
+            currentAlpha = alpha;
+            currentBeta = beta;
+
+            if (centerAlpha === null) {
+                recenter();
+            }
+
+            // --- 1. Calculate Yaw (Left/Right) with Wrap-Around Fix ---
+            let deltaAlpha = alpha - centerAlpha;
+
+            // Fix the "Right Edge" bug: handle the 0-360 wrap
+            if (deltaAlpha > 180) deltaAlpha -= 360;
+            if (deltaAlpha < -180) deltaAlpha += 360;
+
+            // --- 2. Calculate Pitch (Up/Down) ---
+            let deltaBeta = beta - centerBeta;
+
+            // --- 3. Map to Screen Coordinates ---
+            // Invert Yaw so turning left moves cursor left
+            // Invert Pitch because tilting phone UP (pos beta) should move cursor UP (neg Y)
+            let normX = clamp(deltaAlpha / MAX_YAW, -1, 1); // -1 (Left) to 1 (Right)
+            let normY = clamp(deltaBeta / MAX_PITCH, -1, 1); // -1 (Up) to 1 (Down)
+
+            // Convert -1..1 to 0..1
+            cursorX = (normX + 1) / 2;
+            cursorY = (normY + 1) / 2;
+
+            // If phone goes UP (beta increases), deltaBeta is positive.
+            // We want cursor to go UP (y becomes 0). 
+            cursorY = 1 - cursorY;
+
+            updateLocalUI();
+        }
+
+        function recenter() {
+            centerAlpha = currentAlpha;
+            centerBeta = currentBeta;
+            statusEl.textContent = "Recentered!";
+            setTimeout(() => {
+                if (isRunning) statusEl.textContent = "Connected";
+            }, 1000);
+        }
+
+        function updateLocalUI() {
+            // Move local crosshair
+            const w = container.clientWidth;
+            const h = container.clientHeight;
+            crosshair.style.left = `${cursorX * w}px`;
+            crosshair.style.top = `${cursorY * h}px`;
+        }
+
+        // --- Networking ---
+        async function joinGame() {
+            try {
+                const name = playerNameInput.value;
+                const res = await fetch("/join2", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name })
+                });
+                const data = await res.json();
+                playerId = data.id;
+                playerColor = data.color;
+
+                // Update UI to show color
+                document.querySelector('h1').style.background = playerColor;
+                document.querySelector('h1').style.webkitBackgroundClip = "text";
+                document.querySelector('h1').style.webkitTextFillColor = "transparent";
+                crosshair.style.background = playerColor;
+                crosshair.style.boxShadow = `0 0 15px ${playerColor}`;
+                shootBtn.style.background = playerColor;
+
+                statusEl.textContent = "Joined! Calibrating...";
+                return true;
+            } catch (e) {
+                console.error(e);
+                statusEl.textContent = "Join Failed";
+                return false;
+            }
+        }
+
+        async function sendSensorData() {
+            if (!isRunning || !playerId) return;
+            try {
+                await fetch("/sensor2", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        id: playerId,
+                        cursorX,
+                        cursorY,
+                        orientation: { alpha: currentAlpha, beta: currentBeta }
+                    })
+                });
+            } catch (e) { console.error(e); }
+        }
+
+        async function shoot() {
+            if (!isRunning) await startSensors();
+            if (!playerId) return;
+
+            shootBtn.style.transform = "scale(0.95)";
+            setTimeout(() => shootBtn.style.transform = "scale(1)", 100);
+
+            try {
+                await fetch("/shoot2", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        id: playerId
+                    })
+                });
+
+                // Haptic feedback if available
+                if (navigator.vibrate) navigator.vibrate(50);
+
+            } catch (e) {
+                statusEl.textContent = "Network Error";
+            }
+        }
+
+        // --- Initialization ---
+        async function startSensors() {
+            if (isRunning) return;
+
+            // Join first if not joined
+            if (!playerId) {
+                const joined = await joinGame();
+                if (!joined) return;
+            }
+
+            // iOS Permission Request
+            if (typeof DeviceMotionEvent.requestPermission === 'function') {
+                try {
+                    const response = await DeviceMotionEvent.requestPermission();
+                    if (response === 'granted') {
+                        setupListeners();
+                    } else {
+                        statusEl.textContent = "Permission Denied";
+                    }
+                } catch (e) { console.error(e); }
+            } else {
+                setupListeners();
+            }
+        }
+
+        function setupListeners() {
+            window.addEventListener('deviceorientation', handleOrientation);
+            isRunning = true;
+            statusEl.textContent = "Connected";
+            recenter();
+            // High frequency sync (20ms = 50Hz)
+            setInterval(sendSensorData, 20);
+        }
+
+        // --- Bindings ---
+        shootBtn.addEventListener('click', shoot);
+        recenterBtn.addEventListener('click', recenter);
+        // Start on interaction (needed for iOS permissions and audio contexts usually)
+        shootBtn.addEventListener('touchstart', startSensors, { once: true });
+
+    </script>
+</body>
+
+</html>

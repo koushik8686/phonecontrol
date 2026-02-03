@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Phone Laser Pointer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #020617;
+      cursor: none;
+      user-select: none;
+    }
+
+    #laser {
+      position: fixed;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: red;
+      box-shadow:
+        0 0 10px red,
+        0 0 20px rgba(255, 0, 0, 0.8);
+      pointer-events: none;
+      transform: translate(-50%, -50%);
+      z-index: 100;
+    }
+
+    #hud {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.6);
+      color: #e5e7eb;
+      font-family: monospace;
+      font-size: 12px;
+      padding: 10px 14px;
+      border-radius: 12px;
+      backdrop-filter: blur(6px);
+      text-align: center;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="laser"></div>
+<div id="hud">
+  📱 Hold phone like a remote<br>
+  Rotate wrist naturally
+</div>
+
+<script>
+  const SENSOR_ENDPOINT = "/sensor";
+  const laser = document.getElementById("laser");
+
+  let x = window.innerWidth / 2;
+  let y = window.innerHeight / 2;
+
+  // Reference yaw
+  let centerAlpha = null;
+
+  // 👇 THESE ARE THE IMPORTANT VALUES
+  const MAX_YAW_RANGE   = 60; // ±60° wrist rotation → FULL screen
+  const MAX_PITCH_RANGE = 35; // ±35° tilt → FULL screen
+  const SMOOTHING = 0.25;
+
+  function clamp(v, min, max) {
+    return Math.max(min, Math.min(max, v));
+  }
+
+  function map(v, inMin, inMax, outMin, outMax) {
+    return ((v - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+  }
+
+  async function pollSensor() {
+    try {
+      const res = await fetch(SENSOR_ENDPOINT);
+      const data = await res.json();
+
+      const alpha = data.orientation?.alpha ?? 0;
+      const beta  = data.orientation?.beta  ?? 0;
+
+      // Set yaw reference once
+      if (centerAlpha === null) {
+        centerAlpha = alpha;
+      }
+
+      // Relative yaw with wrap handling
+      let deltaAlpha = alpha - centerAlpha;
+      if (deltaAlpha > 180) deltaAlpha -= 360;
+      if (deltaAlpha < -180) deltaAlpha += 360;
+
+      // Clamp to realistic wrist range
+      const yaw   = clamp(deltaAlpha, -MAX_YAW_RANGE, MAX_YAW_RANGE);
+      const pitch = clamp(beta,       -MAX_PITCH_RANGE, MAX_PITCH_RANGE);
+
+      // Map to full screen
+      const targetX = map(
+        -yaw,
+        -MAX_YAW_RANGE,
+        MAX_YAW_RANGE,
+        0,
+        window.innerWidth
+      );
+
+      const targetY = map(
+        -pitch,
+        -MAX_PITCH_RANGE,
+        MAX_PITCH_RANGE,
+        0,
+        window.innerHeight
+      );
+
+      // Smooth movement
+      x += (targetX - x) * SMOOTHING;
+      y += (targetY - y) * SMOOTHING;
+
+      laser.style.left = `${x}px`;
+      laser.style.top  = `${y}px`;
+
+    } catch (err) {
+      console.error("Sensor fetch failed", err);
+    }
+  }
+
+  setInterval(pollSensor, 50);
+
+  window.addEventListener("resize", () => {
+    x = window.innerWidth / 2;
+    y = window.innerHeight / 2;
+  });
+</script>
+
+</body>
+</html>

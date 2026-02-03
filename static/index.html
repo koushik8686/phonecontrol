@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Sensor Controller</title>
+<title>Sensor Controller Fixed</title>
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -16,6 +16,7 @@
     min-height: 100vh;
     margin: 0;
     text-align: center;
+    padding-bottom: 50px;
   }
   .container {
     width: 100%;
@@ -23,16 +24,37 @@
     padding: 20px;
     box-sizing: border-box;
   }
-  h1 { color: #1d4ed8; }
-  p { color: #4b5563; }
+  h1 { color: #1d4ed8; margin-bottom: 10px; }
+  p { color: #4b5563; font-size: 0.9rem; }
+  
   #status {
     margin-top: 15px;
     padding: 8px 16px;
     background: #e5e7eb;
     border-radius: 12px;
     font-weight: 500;
+    font-size: 0.9rem;
     transition: all 0.3s ease;
   }
+
+  /* Debug Box Styles */
+  .debug-box {
+    background: #1f2937;
+    color: #10b981; /* Matrix Green */
+    font-family: monospace;
+    font-size: 0.75rem;
+    padding: 10px;
+    border-radius: 8px;
+    width: 100%;
+    text-align: left;
+    margin-top: 20px;
+    height: 100px;
+    overflow-y: scroll;
+    white-space: pre-wrap;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
+    border: 1px solid #374151;
+  }
+
   .sensor-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -44,7 +66,7 @@
     background: #ffffff;
     border-radius: 16px;
     padding: 16px;
-    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
     border: 1px solid #e5e7eb;
   }
   .card h3 {
@@ -52,6 +74,8 @@
     font-size: 1rem;
     color: #374151;
     text-align: left;
+    border-bottom: 1px solid #f3f4f6;
+    padding-bottom: 8px;
   }
   .data-row {
     display: flex;
@@ -61,59 +85,57 @@
     padding: 4px 0;
   }
   .data-row span:first-child { color: #6b7280; }
-  .data-row span:last-child { font-weight: 600; }
+  .data-row span:last-child { font-weight: 600; color: #111827; }
 </style>
 </head>
 <body>
 
 <div class="container">
-  <h1>Full Sensor Controller</h1>
-  <p>Tap anywhere on the screen to grant sensor access and begin streaming.</p>
+  <h1>Sensor Controller</h1>
+  <p>Tap screen to start streaming</p>
   <div id="status">Status: Disconnected</div>
+
+  <div class="debug-box" id="json-preview">
+    WAITING FOR DATA...
+  </div>
 
   <div class="sensor-grid">
     <div class="card">
         <h3>Metrics</h3>
-        <div class="data-row"><span>Datapoints Sent:</span> <span id="val-datapoints">0</span></div>
-        <div class="data-row"><span>Data Interval:</span> <span id="val-interval">0 ms</span></div>
+        <div class="data-row"><span>Sent Count:</span> <span id="val-datapoints">0</span></div>
+        <div class="data-row"><span>Interval:</span> <span id="val-interval">0 ms</span></div>
     </div>
 
     <div class="card">
       <h3>🧭 Orientation</h3>
-      <div class="data-row"><span>Z-axis (α):</span> <span id="val-o-alpha">0.0°</span></div>
-      <div class="data-row"><span>X-axis (β):</span> <span id="val-o-beta">0.0°</span></div>
-      <div class="data-row"><span>Y-axis (γ):</span> <span id="val-o-gamma">0.0°</span></div>
+      <div class="data-row"><span>Alpha (Z):</span> <span id="val-o-alpha">0.0°</span></div>
+      <div class="data-row"><span>Beta (X):</span> <span id="val-o-beta">0.0°</span></div>
+      <div class="data-row"><span>Gamma (Y):</span> <span id="val-o-gamma">0.0°</span></div>
     </div>
 
     <div class="card">
       <h3>🏃‍♂️ Accelerometer</h3>
-      <div class="data-row"><span>X-axis:</span> <span id="val-a-x">0.0 m/s²</span></div>
-      <div class="data-row"><span>Y-axis:</span> <span id="val-a-y">0.0 m/s²</span></div>
-      <div class="data-row"><span>Z-axis:</span> <span id="val-a-z">0.0 m/s²</span></div>
+      <div class="data-row"><span>X:</span> <span id="val-a-x">0.0</span></div>
+      <div class="data-row"><span>Y:</span> <span id="val-a-y">0.0</span></div>
+      <div class="data-row"><span>Z:</span> <span id="val-a-z">0.0</span></div>
     </div>
 
     <div class="card">
-      <h3>🌍 Accel. (incl. Gravity)</h3>
-      <div class="data-row"><span>X-axis:</span> <span id="val-ag-x">0.0 m/s²</span></div>
-      <div class="data-row"><span>Y-axis:</span> <span id="val-ag-y">0.0 m/s²</span></div>
-      <div class="data-row"><span>Z-axis:</span> <span id="val-ag-z">0.0 m/s²</span></div>
-    </div>
-
-    <div class="card">
-      <h3>🔄 Gyroscope (Rotation Rate)</h3>
-      <div class="data-row"><span>Z-axis (α):</span> <span id="val-r-alpha">0.0°/s</span></div>
-      <div class="data-row"><span>X-axis (β):</span> <span id="val-r-beta">0.0°/s</span></div>
-      <div class="data-row"><span>Y-axis (γ):</span> <span id="val-r-gamma">0.0°/s</span></div>
+      <h3>🌍 Accel + Gravity</h3>
+      <div class="data-row"><span>X:</span> <span id="val-ag-x">0.0</span></div>
+      <div class="data-row"><span>Y:</span> <span id="val-ag-y">0.0</span></div>
+      <div class="data-row"><span>Z:</span> <span id="val-ag-z">0.0</span></div>
     </div>
   </div>
 </div>
 
 <script>
 const statusEl = document.getElementById('status');
-const serverURL = "/sensor";
+const debugEl = document.getElementById('json-preview');
+const serverURL = "/sensor"; 
 let sensorsStarted = false;
 
-// Store all sensor data in one object
+// Data Store
 const sensorData = {
     datapoints: 0,
     interval: 0,
@@ -125,49 +147,43 @@ const sensorData = {
 
 function startSensors() {
     if (sensorsStarted) return;
-    
-    const permissionPromises = [];
-    
-    // Request permission for DeviceOrientationEvent
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        permissionPromises.push(DeviceOrientationEvent.requestPermission());
+
+    // Check HTTPS
+    if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+        statusEl.textContent = "Error: HTTPS Required";
+        statusEl.style.color = "red";
+        return;
     }
 
-    // Request permission for DeviceMotionEvent
+    // Permission handling for iOS 13+
     if (typeof DeviceMotionEvent.requestPermission === 'function') {
-        permissionPromises.push(DeviceMotionEvent.requestPermission());
+        DeviceMotionEvent.requestPermission()
+            .then(response => {
+                if (response === 'granted') {
+                    window.addEventListener('devicemotion', handleMotion);
+                    window.addEventListener('deviceorientation', handleOrientation);
+                    initSuccess();
+                } else {
+                    statusEl.textContent = "Permission Denied";
+                }
+            })
+            .catch(console.error);
+    } else {
+        // Android / Non-iOS 13+
+        window.addEventListener('devicemotion', handleMotion);
+        window.addEventListener('deviceorientation', handleOrientation);
+        initSuccess();
     }
+}
 
-    Promise.all(permissionPromises)
-        .then(results => {
-            // Check if all permissions were granted (or if no permissions were needed)
-            if (results.every(result => result === 'granted') || results.length === 0) {
-                window.addEventListener("deviceorientation", handleOrientation);
-                window.addEventListener("devicemotion", handleMotion);
-                
-                statusEl.textContent = 'Status: Connected & Streaming';
-                statusEl.style.color = '#16a34a'; // Green
-                statusEl.style.background = '#d1fae5';
-                sensorsStarted = true;
-
-                // Send data to the server every 100ms
-                setInterval(sendDataToServer, 100);
-            } else {
-                statusEl.textContent = 'Permission Denied';
-                statusEl.style.color = '#dc2626'; // Red
-                statusEl.style.background = '#fee2e2';
-            }
-        })
-        .catch(error => {
-             // Fallback for browsers that don't need explicit permission (like Android Chrome)
-            window.addEventListener("deviceorientation", handleOrientation);
-            window.addEventListener("devicemotion", handleMotion);
-            statusEl.textContent = 'Status: Connected & Streaming';
-            statusEl.style.color = '#16a34a';
-            statusEl.style.background = '#d1fae5';
-            sensorsStarted = true;
-            setInterval(sendDataToServer, 500);
-        });
+function initSuccess() {
+    sensorsStarted = true;
+    statusEl.textContent = 'Streaming Data...';
+    statusEl.style.background = '#d1fae5';
+    statusEl.style.color = '#065f46';
+    
+    // Send data every 100ms
+    setInterval(sendDataToServer, 100);
 }
 
 function handleOrientation(event) {
@@ -178,52 +194,70 @@ function handleOrientation(event) {
 }
 
 function handleMotion(event) {
-    sensorData.acceleration = event.acceleration || {x:0, y:0, z:0};
-    sensorData.accelerationIncludingGravity = event.accelerationIncludingGravity || {x:0, y:0, z:0};
-    sensorData.rotationRate = event.rotationRate || {alpha:0, beta:0, gamma:0};
-    sensorData.interval = event.interval || 0;
+    // FIX: Manually extract values to plain object so JSON.stringify works
+    const acc = event.acceleration || {x:0, y:0, z:0};
+    sensorData.acceleration = {
+        x: acc.x || 0,
+        y: acc.y || 0,
+        z: acc.z || 0
+    };
+
+    const accG = event.accelerationIncludingGravity || {x:0, y:0, z:0};
+    sensorData.accelerationIncludingGravity = {
+        x: accG.x || 0,
+        y: accG.y || 0,
+        z: accG.z || 0
+    };
+
+    const rot = event.rotationRate || {alpha:0, beta:0, gamma:0};
+    sensorData.rotationRate = {
+        alpha: rot.alpha || 0,
+        beta: rot.beta || 0,
+        gamma: rot.gamma || 0
+    };
+
+    sensorData.interval = event.interval || 16;
     updateUI();
 }
 
 function updateUI() {
     document.getElementById('val-datapoints').textContent = sensorData.datapoints;
-    document.getElementById('val-interval').textContent = `${sensorData.interval.toFixed(0)} ms`;
+    document.getElementById('val-interval').textContent = Math.round(sensorData.interval) + ' ms';
 
-    document.getElementById('val-o-alpha').textContent = `${sensorData.orientation.alpha.toFixed(1)}°`;
-    document.getElementById('val-o-beta').textContent = `${sensorData.orientation.beta.toFixed(1)}°`;
-    document.getElementById('val-o-gamma').textContent = `${sensorData.orientation.gamma.toFixed(1)}°`;
-
-    document.getElementById('val-a-x').textContent = `${(sensorData.acceleration.x || 0).toFixed(1)} m/s²`;
-    document.getElementById('val-a-y').textContent = `${(sensorData.acceleration.y || 0).toFixed(1)} m/s²`;
-    document.getElementById('val-a-z').textContent = `${(sensorData.acceleration.z || 0).toFixed(1)} m/s²`;
-
-    document.getElementById('val-ag-x').textContent = `${(sensorData.accelerationIncludingGravity.x || 0).toFixed(1)} m/s²`;
-    document.getElementById('val-ag-y').textContent = `${(sensorData.accelerationIncludingGravity.y || 0).toFixed(1)} m/s²`;
-    document.getElementById('val-ag-z').textContent = `${(sensorData.accelerationIncludingGravity.z || 0).toFixed(1)} m/s²`;
+    document.getElementById('val-o-alpha').textContent = sensorData.orientation.alpha.toFixed(1) + '°';
+    document.getElementById('val-o-beta').textContent = sensorData.orientation.beta.toFixed(1) + '°';
     
-    document.getElementById('val-r-alpha').textContent = `${(sensorData.rotationRate.alpha || 0).toFixed(1)}°/s`;
-    document.getElementById('val-r-beta').textContent = `${(sensorData.rotationRate.beta || 0).toFixed(1)}°/s`;
-    document.getElementById('val-r-gamma').textContent = `${(sensorData.rotationRate.gamma || 0).toFixed(1)}°/s`;
+    document.getElementById('val-a-x').textContent = sensorData.acceleration.x.toFixed(2);
+    document.getElementById('val-a-y').textContent = sensorData.acceleration.y.toFixed(2);
+    document.getElementById('val-a-z').textContent = sensorData.acceleration.z.toFixed(2);
+    
+    document.getElementById('val-ag-x').textContent = sensorData.accelerationIncludingGravity.x.toFixed(2);
+    document.getElementById('val-ag-y').textContent = sensorData.accelerationIncludingGravity.y.toFixed(2);
+    document.getElementById('val-ag-z').textContent = sensorData.accelerationIncludingGravity.z.toFixed(2);
 }
 
 function sendDataToServer() {
     if (!sensorsStarted) return;
+    
     sensorData.datapoints++;
+    const jsonPayload = JSON.stringify(sensorData);
+
+    // Update Debug Box with actual payload
+    debugEl.textContent = "SENDING:\n" + jsonPayload;
 
     fetch(serverURL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sensorData)
+        body: jsonPayload
     }).catch(err => {
-        console.error("Failed to send data:", err);
-        statusEl.textContent = 'Connection Lost';
-        statusEl.style.color = '#dc2626'; // Red
+        console.error(err);
+        statusEl.textContent = 'Server Disconnected';
         statusEl.style.background = '#fee2e2';
-        sensorsStarted = false; // Stop trying to send data
+        statusEl.style.color = '#991b1b';
     });
 }
 
-// Start sensors on the first user interaction
+// Start on click
 document.body.addEventListener('click', startSensors, { once: true });
 </script>
 </body>
