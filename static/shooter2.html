@@ -145,15 +145,16 @@
 
     <script>
         // --- Configuration ---
-        const MAX_YAW = 50;   // Degrees of horizontal movement allowed
-        const MAX_PITCH = 35; // Degrees of vertical movement allowed
+        const MAX_YAW = 60;   // Degrees of wrist rotation (matches laser.html)
+        const MAX_PITCH = 35; // Degrees of tilt (matches laser.html)
 
         // --- State ---
         let playerId = null;
         let playerColor = "#ef4444";
 
         let centerAlpha = null;
-        let centerBeta = null;
+        // centerBeta is NOT used for pitch calculation in laser.html logic (absolute pitch)
+
         let currentAlpha = 0;
         let currentBeta = 0;
 
@@ -173,6 +174,9 @@
 
         // --- Utils ---
         function clamp(val, min, max) { return Math.max(min, Math.min(max, val)); }
+        function map(v, inMin, inMax, outMin, outMax) {
+            return ((v - inMin) * (outMax - outMin)) / (inMax - inMin) + outMin;
+        }
 
         // --- Core Orientation Logic ---
         function handleOrientation(event) {
@@ -180,44 +184,39 @@
             const alpha = event.alpha || 0;
             const beta = event.beta || 0;
 
-            // Save raw for recentering
+            // Save raw for sending/debug
             currentAlpha = alpha;
             currentBeta = beta;
 
             if (centerAlpha === null) {
-                recenter();
+                centerAlpha = alpha;
             }
 
             // --- 1. Calculate Yaw (Left/Right) with Wrap-Around Fix ---
             let deltaAlpha = alpha - centerAlpha;
-
-            // Fix the "Right Edge" bug: handle the 0-360 wrap
             if (deltaAlpha > 180) deltaAlpha -= 360;
             if (deltaAlpha < -180) deltaAlpha += 360;
 
-            // --- 2. Calculate Pitch (Up/Down) ---
-            let deltaBeta = beta - centerBeta;
+            // --- 2. Clamp values (Lawser.html logic) ---
+            const yaw = clamp(deltaAlpha, -MAX_YAW, MAX_YAW);
+            const pitch = clamp(beta, -MAX_PITCH, MAX_PITCH); // Absolute pitch
 
-            // --- 3. Map to Screen Coordinates ---
-            // Invert Yaw so turning left moves cursor left
-            // Invert Pitch because tilting phone UP (pos beta) should move cursor UP (neg Y)
-            let normX = clamp(deltaAlpha / MAX_YAW, -1, 1); // -1 (Left) to 1 (Right)
-            let normY = clamp(deltaBeta / MAX_PITCH, -1, 1); // -1 (Up) to 1 (Down)
+            // --- 3. Map to Screen Coordinates (0.0 to 1.0) ---
+            // laser.html maps -yaw and -pitch. 
+            // map(-yaw, -60, 60, 0, width) -> normalized: map(-yaw, -60, 60, 0, 1)
+            let normX = map(-yaw, -MAX_YAW, MAX_YAW, 0, 1);
+            let normY = map(-pitch, -MAX_PITCH, MAX_PITCH, 0, 1);
 
-            // Convert -1..1 to 0..1
-            cursorX = (normX + 1) / 2;
-            cursorY = (normY + 1) / 2;
-
-            // If phone goes UP (beta increases), deltaBeta is positive.
-            // We want cursor to go UP (y becomes 0). 
-            cursorY = 1 - cursorY;
+            cursorX = normX;
+            cursorY = normY;
 
             updateLocalUI();
         }
 
         function recenter() {
             centerAlpha = currentAlpha;
-            centerBeta = currentBeta;
+            // distinct from laser.html: laser only centers once. 
+            // We allow recentering Yaw anywhere. Pitch remains absolute.
             statusEl.textContent = "Recentered!";
             setTimeout(() => {
                 if (isRunning) statusEl.textContent = "Connected";
@@ -341,6 +340,22 @@
         recenterBtn.addEventListener('click', recenter);
         // Start on interaction (needed for iOS permissions and audio contexts usually)
         shootBtn.addEventListener('touchstart', startSensors, { once: true });
+
+        // Update name on fly
+        let nameTimeout;
+        playerNameInput.addEventListener('input', () => {
+            if (!playerId) return;
+            clearTimeout(nameTimeout);
+            nameTimeout = setTimeout(async () => {
+                try {
+                    await fetch("/update-name", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ id: playerId, name: playerNameInput.value })
+                    });
+                } catch (e) { console.error(e); }
+            }, 500);
+        });
 
     </script>
 </body>

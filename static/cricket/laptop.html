@@ -1,0 +1,1457 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cricket — Phone Bat</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #0a1628;
+        }
+
+        #game-canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(180deg, #0a1628 0%, #1a3a5c 60%, #2d5a3d 100%);
+        }
+
+        /* ── HUD ── */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            font-family: 'Bebas Neue', sans-serif;
+            color: #fff;
+            z-index: 10;
+        }
+
+        #score-bar {
+            position: absolute;
+            top: 16px;
+            left: 24px;
+            font-size: 1.6rem;
+            letter-spacing: 2px;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.7);
+        }
+
+        /* power bar */
+        #power-wrap {
+            position: absolute;
+            top: 16px;
+            right: 24px;
+            width: 140px;
+            height: 22px;
+            border: 2px solid rgba(255, 255, 255, 0.5);
+            border-radius: 11px;
+            overflow: hidden;
+            background: rgba(0, 0, 0, 0.3);
+        }
+
+        #power-fill {
+            height: 100%;
+            width: 0%;
+            border-radius: 9px;
+            transition: width 0.12s ease, background 0.12s ease;
+        }
+
+        #power-label {
+            position: absolute;
+            top: 42px;
+            right: 24px;
+            font-size: 0.9rem;
+            letter-spacing: 1px;
+            opacity: 0.7;
+        }
+
+        /* centre flash */
+        #shot-result {
+            position: absolute;
+            top: 38%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4.5rem;
+            letter-spacing: 4px;
+            opacity: 0;
+            pointer-events: none;
+            text-shadow: 0 4px 20px rgba(0, 0, 0, 0.8);
+            transition: none;
+        }
+
+        /* bottom prompt */
+        #prompt {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1.8rem;
+            letter-spacing: 3px;
+            opacity: 0.85;
+            animation: pulse 1.4s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 0.85;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* recalibrate */
+        #recalibrate-btn {
+            position: absolute;
+            bottom: 20px;
+            right: 24px;
+            pointer-events: all;
+            background: rgba(255, 255, 255, 0.12);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: #fff;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 1px;
+            padding: 8px 18px;
+            border-radius: 8px;
+            cursor: pointer;
+            backdrop-filter: blur(6px);
+            transition: background 0.2s;
+        }
+
+        #recalibrate-btn:hover {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        /* debug bar */
+        #debug-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 24px;
+            pointer-events: none;
+            font-family: monospace;
+            font-size: 0.7rem;
+            color: rgba(255, 255, 255, 0.45);
+            line-height: 1.5;
+        }
+
+        /* connection status */
+        #conn-status {
+            position: absolute;
+            top: 16px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.85rem;
+            letter-spacing: 1px;
+            padding: 4px 14px;
+            border-radius: 20px;
+            background: rgba(255, 60, 60, 0.25);
+            border: 1px solid rgba(255, 60, 60, 0.5);
+            color: #ff6b6b;
+            transition: all 0.3s;
+        }
+
+        #conn-status.connected {
+            background: rgba(40, 220, 120, 0.2);
+            border-color: rgba(40, 220, 120, 0.5);
+            color: #5cff9d;
+        }
+
+        /* swing flash */
+        #swing-flash {
+            position: absolute;
+            bottom: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 2.4rem;
+            letter-spacing: 4px;
+            color: #ff4444;
+            opacity: 0;
+            animation: none;
+        }
+
+        @keyframes swingPulse {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: translateX(-50%) scale(1);
+            }
+
+            50% {
+                opacity: 0.4;
+                transform: translateX(-50%) scale(1.12);
+            }
+        }
+
+        /* game over overlay */
+        #game-over {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        #game-over.show {
+            display: flex;
+        }
+
+        #game-over h1 {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 5rem;
+            letter-spacing: 6px;
+            color: #ffcc00;
+            text-shadow: 0 4px 30px rgba(255, 200, 0, 0.5);
+            margin-bottom: 10px;
+        }
+
+        #game-over .final-score {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 2.4rem;
+            letter-spacing: 3px;
+            color: #fff;
+            margin-bottom: 30px;
+        }
+
+        #play-again-btn {
+            pointer-events: all;
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.4rem;
+            letter-spacing: 2px;
+            padding: 14px 40px;
+            border: 2px solid #ffcc00;
+            background: rgba(255, 200, 0, 0.15);
+            color: #ffcc00;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        #play-again-btn:hover {
+            background: rgba(255, 200, 0, 0.3);
+        }
+
+        /* ═══════════════════════════════════════
+           CALIBRATION OVERLAY
+           ═══════════════════════════════════════ */
+        #cal-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(5, 10, 25, 0.92);
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            font-family: 'Bebas Neue', sans-serif;
+            color: #fff;
+            transition: opacity 0.4s;
+        }
+
+        #cal-overlay.hidden {
+            display: none;
+        }
+
+        #cal-overlay .cal-step {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            max-width: 500px;
+            padding: 0 30px;
+        }
+
+        #cal-overlay .cal-step.active {
+            display: flex;
+        }
+
+        #cal-overlay h2 {
+            font-size: 2.8rem;
+            letter-spacing: 4px;
+            margin-bottom: 12px;
+            background: linear-gradient(135deg, #5cff9d, #00b4d8);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        #cal-overlay .cal-desc {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            font-size: 1.05rem;
+            line-height: 1.6;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 28px;
+        }
+
+        #cal-overlay .cal-icon {
+            font-size: 5rem;
+            margin-bottom: 20px;
+            animation: calFloat 2s ease-in-out infinite;
+        }
+
+        @keyframes calFloat {
+
+            0%,
+            100% {
+                transform: translateY(0);
+            }
+
+            50% {
+                transform: translateY(-12px);
+            }
+        }
+
+        #cal-overlay .cal-btn {
+            font-family: 'Bebas Neue', sans-serif;
+            font-size: 1.3rem;
+            letter-spacing: 2px;
+            padding: 14px 44px;
+            border: 2px solid #5cff9d;
+            background: rgba(92, 255, 157, 0.12);
+            color: #5cff9d;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.25s;
+            margin: 6px;
+        }
+
+        #cal-overlay .cal-btn:hover {
+            background: rgba(92, 255, 157, 0.25);
+            transform: scale(1.04);
+        }
+
+        #cal-overlay .cal-btn.secondary {
+            border-color: rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.5);
+            background: rgba(255, 255, 255, 0.06);
+            font-size: 1rem;
+            padding: 10px 30px;
+        }
+
+        #cal-overlay .cal-btn.secondary:hover {
+            background: rgba(255, 255, 255, 0.12);
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        /* progress dots */
+        .cal-progress {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+        }
+
+        .cal-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.15);
+            border: 2px solid rgba(255, 255, 255, 0.25);
+            transition: all 0.3s;
+        }
+
+        .cal-dot.active {
+            background: #5cff9d;
+            border-color: #5cff9d;
+            box-shadow: 0 0 12px rgba(92, 255, 157, 0.5);
+        }
+
+        .cal-dot.done {
+            background: #00b4d8;
+            border-color: #00b4d8;
+        }
+
+        /* figure-8 animation */
+        .fig8-container {
+            width: 120px;
+            height: 120px;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .fig8-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #5cff9d;
+            box-shadow: 0 0 20px rgba(92, 255, 157, 0.6);
+            position: absolute;
+            animation: figure8 3s linear infinite;
+        }
+
+        .fig8-trail {
+            width: 100%;
+            height: 100%;
+            border: 2px dashed rgba(255, 255, 255, 0.15);
+            border-radius: 50%;
+            position: absolute;
+        }
+
+        @keyframes figure8 {
+            0% {
+                left: 50%;
+                top: 25%;
+            }
+
+            12.5% {
+                left: 80%;
+                top: 15%;
+            }
+
+            25% {
+                left: 95%;
+                top: 25%;
+            }
+
+            37.5% {
+                left: 80%;
+                top: 50%;
+            }
+
+            50% {
+                left: 50%;
+                top: 75%;
+            }
+
+            62.5% {
+                left: 20%;
+                top: 85%;
+            }
+
+            75% {
+                left: 5%;
+                top: 75%;
+            }
+
+            87.5% {
+                left: 20%;
+                top: 50%;
+            }
+
+            100% {
+                left: 50%;
+                top: 25%;
+            }
+        }
+
+        /* live angle readout */
+        .cal-live-data {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: rgba(92, 255, 157, 0.6);
+            margin-top: 16px;
+            text-align: left;
+            line-height: 1.7;
+        }
+
+        /* steady indicator */
+        .steady-ring {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            border: 3px solid rgba(255, 255, 255, 0.15);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .steady-ring .inner-dot {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            background: #ff6b6b;
+            transition: all 0.3s;
+        }
+
+        .steady-ring .inner-dot.steady {
+            background: #5cff9d;
+            box-shadow: 0 0 20px rgba(92, 255, 157, 0.5);
+        }
+
+        .steady-ring .ring-fill {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            border: 3px solid transparent;
+            border-top-color: #5cff9d;
+            animation: none;
+        }
+
+        .steady-ring .ring-fill.spinning {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .countdown-text {
+            font-size: 3rem;
+            color: #5cff9d;
+            margin-top: 10px;
+            min-height: 60px;
+        }
+    </style>
+</head>
+
+<body>
+
+    <canvas id="game-canvas"></canvas>
+
+    <div id="hud">
+        <div id="score-bar">SCORE: 0 &nbsp;|&nbsp; BALLS: 0 &nbsp;|&nbsp; WICKETS: 0/10</div>
+        <div id="power-wrap">
+            <div id="power-fill"></div>
+        </div>
+        <div id="power-label">SWING POWER</div>
+        <div id="conn-status">NO SENSOR DATA</div>
+        <div id="shot-result"></div>
+        <div id="prompt"></div>
+        <div id="swing-flash">SWING!</div>
+        <div id="debug-bar"></div>
+        <button id="recalibrate-btn" onclick="recalibrate()">RECALIBRATE</button>
+    </div>
+
+    <!-- ═══════════ CALIBRATION OVERLAY ═══════════ -->
+    <div id="cal-overlay">
+        <div class="cal-progress">
+            <div class="cal-dot active" id="dot0"></div>
+            <div class="cal-dot" id="dot1"></div>
+            <div class="cal-dot" id="dot2"></div>
+        </div>
+
+        <!-- STEP 0: Wait for sensor -->
+        <div class="cal-step active" id="cal-step-0">
+            <div class="cal-icon">📡</div>
+            <h2>CONNECT YOUR PHONE</h2>
+            <p class="cal-desc">
+                Open the phone controller page on your smartphone and tap the screen to start streaming sensor
+                data.<br><br>
+                Waiting for sensor signal…
+            </p>
+            <div class="steady-ring">
+                <div class="ring-fill spinning"></div>
+                <div class="inner-dot" id="sensor-dot"></div>
+            </div>
+        </div>
+
+        <!-- STEP 1: Figure-8 warmup -->
+        <div class="cal-step" id="cal-step-1">
+            <div class="fig8-container">
+                <div class="fig8-dot"></div>
+            </div>
+            <h2>WARM UP SENSORS</h2>
+            <p class="cal-desc">
+                Slowly wave your phone in a <strong>figure-8 pattern</strong> for a few seconds.
+                This helps the magnetometer & gyroscope settle for accurate tracking.
+            </p>
+            <div class="cal-live-data" id="warmup-live"></div>
+            <div style="display:flex; gap:12px; margin-top:10px;">
+                <button class="cal-btn" onclick="calNext()">DONE WAVING</button>
+                <button class="cal-btn secondary" onclick="calNext()">SKIP</button>
+            </div>
+        </div>
+
+        <!-- STEP 2: Hold batting stance & calibrate -->
+        <div class="cal-step" id="cal-step-2">
+            <div class="cal-icon">🏏</div>
+            <h2>SET YOUR STANCE</h2>
+            <p class="cal-desc">
+                Hold your phone like a <strong>cricket bat handle</strong> in your natural batting stance.<br>
+                Keep it <strong>still</strong> — the bat on screen will lock to this position as "neutral".
+            </p>
+            <div class="steady-ring">
+                <div class="inner-dot" id="steady-dot"></div>
+            </div>
+            <div class="countdown-text" id="cal-countdown"></div>
+            <div class="cal-live-data" id="stance-live"></div>
+            <button class="cal-btn" id="cal-capture-btn" onclick="startCalCapture()">HOLD STILL & CALIBRATE</button>
+        </div>
+    </div>
+
+    <div id="game-over">
+        <h1>INNINGS OVER</h1>
+        <div class="final-score" id="final-score-text">FINAL SCORE: 0</div>
+        <button id="play-again-btn" onclick="resetGame()">PLAY AGAIN</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // ═══════════════════════════════════════════════════════════════
+        // GLOBALS & CONFIG
+        // ═══════════════════════════════════════════════════════════════
+        const DEG2RAD = Math.PI / 180;
+
+        const SWING_THRESHOLD = 4.0;
+        const HIT_RADIUS = 1.5;
+        const SWING_COOLDOWN = 800;
+        const BOWL_SPEED = 14;
+        const GRAVITY = -18;
+        const BOUNCE_DAMPING = 0.45;
+        const FRICTION = 0.80;
+        const LAUNCH_SPEED_MAX = 35;
+        const MAX_WICKETS = 10;
+
+        // Smoothing factor for bat SLERP (0 = no movement, 1 = instant snap)
+        const BAT_SMOOTH = 0.35;
+
+        // Game state
+        let score = 0;
+        let balls = 0;
+        let wickets = 0;
+        let gameState = 'idle';
+
+        // Sensor
+        let latestSensorData = null;
+        let sensorConnected = false;
+
+        // Calibration
+        let q_calibration = new THREE.Quaternion();
+        let calibrated = false;
+        let calStep = 0;
+
+        // Target bat quaternion for SLERP smoothing
+        const targetBatQuat = new THREE.Quaternion();
+
+        // Swing detection
+        const ACCEL_BUFFER_SIZE = 8;
+        const accelBuffer = new Float32Array(ACCEL_BUFFER_SIZE);
+        let accelBufIdx = 0;
+        let previousPeak = 0;
+        let swingCooldownTimer = 0;
+        let currentPeak = 0;
+        let swingDetectedThisFrame = false;
+
+        // Previous accG for fallback
+        let prevAccG = { x: 0, y: 0, z: 0 };
+
+        // Ball
+        const ballState = {
+            pos: new THREE.Vector3(),
+            vel: new THREE.Vector3(),
+            state: 'idle'
+        };
+
+        // Trail
+        const TRAIL_LENGTH = 12;
+        const trailPositions = [];
+
+        // ═══════════════════════════════════════════════════════════════
+        // THREE.JS SETUP
+        // ═══════════════════════════════════════════════════════════════
+        const canvas = document.getElementById('game-canvas');
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = false;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a1628);
+        scene.fog = new THREE.Fog(0x0a1628, 40, 120);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
+        camera.position.set(0, 4, 8);
+        camera.lookAt(0, 1, -5);
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ── Lighting ──
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sunLight = new THREE.DirectionalLight(0xfff5e0, 1.2);
+        sunLight.position.set(10, 30, 10);
+        scene.add(sunLight);
+
+        // ── Outfield ──
+        const outfieldGeo = new THREE.PlaneGeometry(100, 100);
+        const outfieldMat = new THREE.MeshLambertMaterial({ color: 0x5a9e6e });
+        const outfield = new THREE.Mesh(outfieldGeo, outfieldMat);
+        outfield.rotation.x = -Math.PI / 2;
+        outfield.position.y = -0.01;
+        scene.add(outfield);
+
+        // ── Pitch ──
+        const pitchGeo = new THREE.PlaneGeometry(3, 22);
+        const pitchMat = new THREE.MeshLambertMaterial({ color: 0x4a7c59 });
+        const pitchMesh = new THREE.Mesh(pitchGeo, pitchMat);
+        pitchMesh.rotation.x = -Math.PI / 2;
+        pitchMesh.position.y = 0.0;
+        pitchMesh.position.z = -9;
+        scene.add(pitchMesh);
+
+        // ── Boundary circle ──
+        const boundaryPts = [];
+        for (let i = 0; i <= 64; i++) {
+            const a = (i / 64) * Math.PI * 2;
+            boundaryPts.push(new THREE.Vector3(Math.cos(a) * 42, 0.02, Math.sin(a) * 42));
+        }
+        const boundaryGeo = new THREE.BufferGeometry().setFromPoints(boundaryPts);
+        const boundaryLine = new THREE.LineLoop(boundaryGeo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 }));
+        scene.add(boundaryLine);
+
+        // ── Crease lines ──
+        function addCreaseLine(z) {
+            const pts = [new THREE.Vector3(-1.2, 0.01, z), new THREE.Vector3(1.2, 0.01, z)];
+            const geo = new THREE.BufferGeometry().setFromPoints(pts);
+            scene.add(new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.6 })));
+        }
+        addCreaseLine(0);
+        addCreaseLine(-20);
+
+        // ── Stumps ──
+        function createStumps(z) {
+            const grp = new THREE.Group();
+            const stumpMat = new THREE.MeshLambertMaterial({ color: 0xf5deb3 });
+            for (let x of [-0.1, 0, 0.1]) {
+                const s = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.7, 0.03), stumpMat);
+                s.position.set(x, 0.35, z);
+                grp.add(s);
+            }
+            const bailMat = new THREE.MeshLambertMaterial({ color: 0xf0c060 });
+            for (let x of [-0.05, 0.05]) {
+                const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.02, 0.02), bailMat);
+                b.position.set(x, 0.71, z);
+                grp.add(b);
+            }
+            scene.add(grp);
+            return grp;
+        }
+        createStumps(0);
+        createStumps(-20);
+
+        // ── Bat ──
+        const bat = new THREE.Group();
+        const handleGeo = new THREE.BoxGeometry(0.08, 0.9, 0.08);
+        const handleMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+        const handleMesh = new THREE.Mesh(handleGeo, handleMat);
+        handleMesh.position.y = 0;
+        bat.add(handleMesh);
+
+        const bladeGeo = new THREE.BoxGeometry(0.25, 1.4, 0.06);
+        const bladeMat = new THREE.MeshLambertMaterial({ color: 0xDEB887 });
+        const bladeMesh = new THREE.Mesh(bladeGeo, bladeMat);
+        bladeMesh.position.y = 1.15;
+        bat.add(bladeMesh);
+
+        bat.position.set(0.4, 0.9, 0.3);
+        scene.add(bat);
+
+        // ── Ball ──
+        const ballGeo = new THREE.SphereGeometry(0.12, 16, 16);
+        const ballMat = new THREE.MeshLambertMaterial({ color: 0xCC2200 });
+        const ballMesh = new THREE.Mesh(ballGeo, ballMat);
+        const ballLight = new THREE.PointLight(0xff4400, 1.5, 4);
+        ballMesh.add(ballLight);
+        ballMesh.visible = false;
+        scene.add(ballMesh);
+
+        // ── Ball trail ──
+        const trailMeshes = [];
+        for (let i = 0; i < TRAIL_LENGTH; i++) {
+            const ts = new THREE.Mesh(
+                new THREE.SphereGeometry(0.08, 8, 8),
+                new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0 })
+            );
+            ts.visible = false;
+            scene.add(ts);
+            trailMeshes.push(ts);
+        }
+
+        // ── Bat ghost (swing afterimage) ──
+        const batGhost = bat.clone(true);
+        batGhost.traverse(c => { if (c.isMesh) { c.material = c.material.clone(); c.material.transparent = true; c.material.opacity = 0; } });
+        batGhost.visible = false;
+        scene.add(batGhost);
+        let ghostFadeTimer = 0;
+
+        // ═══════════════════════════════════════════════════════════════
+        // HUD ELEMENTS
+        // ═══════════════════════════════════════════════════════════════
+        const scoreBarEl = document.getElementById('score-bar');
+        const powerFillEl = document.getElementById('power-fill');
+        const shotResultEl = document.getElementById('shot-result');
+        const promptEl = document.getElementById('prompt');
+        const connStatusEl = document.getElementById('conn-status');
+        const swingFlashEl = document.getElementById('swing-flash');
+        const gameOverEl = document.getElementById('game-over');
+        const finalScoreEl = document.getElementById('final-score-text');
+        const debugBarEl = document.getElementById('debug-bar');
+        const calOverlay = document.getElementById('cal-overlay');
+
+        let shotResultTimeout = null;
+
+        function updateScoreBar() {
+            scoreBarEl.textContent = `SCORE: ${score}  |  BALLS: ${balls}  |  WICKETS: ${wickets}/${MAX_WICKETS}`;
+        }
+
+        function showShotResult(text, color) {
+            if (shotResultTimeout) clearTimeout(shotResultTimeout);
+            shotResultEl.style.transition = 'none';
+            shotResultEl.style.color = color;
+            shotResultEl.style.opacity = '1';
+            shotResultEl.style.transform = 'translate(-50%, -50%)';
+            shotResultEl.textContent = text;
+            void shotResultEl.offsetWidth;
+            shotResultEl.style.transition = 'opacity 1.5s ease, transform 1.5s ease';
+            shotResultEl.style.opacity = '0';
+            shotResultEl.style.transform = 'translate(-50%, calc(-50% - 80px))';
+            shotResultTimeout = setTimeout(() => { shotResultEl.style.transition = 'none'; }, 1600);
+        }
+
+        function setPrompt(text) {
+            promptEl.textContent = text;
+            promptEl.style.opacity = '0.85';
+        }
+        function hidePrompt() { promptEl.style.opacity = '0'; }
+
+        function updatePowerBar(pct) {
+            const clamped = Math.min(100, Math.max(0, pct));
+            powerFillEl.style.width = clamped + '%';
+            if (clamped < 40) powerFillEl.style.background = 'linear-gradient(90deg, #22c55e, #4ade80)';
+            else if (clamped < 70) powerFillEl.style.background = 'linear-gradient(90deg, #eab308, #facc15)';
+            else powerFillEl.style.background = 'linear-gradient(90deg, #ef4444, #f87171)';
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SENSOR POLLING
+        // ═══════════════════════════════════════════════════════════════
+        let lastSensorTime = 0;
+
+        setInterval(async () => {
+            try {
+                const res = await fetch('/cricket/sensor');
+                const data = await res.json();
+                if (data && data.orientation) {
+                    latestSensorData = data;
+                    sensorConnected = true;
+                    lastSensorTime = performance.now();
+                    connStatusEl.textContent = 'SENSOR CONNECTED';
+                    connStatusEl.className = 'connected';
+                }
+            } catch (e) { }
+        }, 10);
+
+        // ═══════════════════════════════════════════════════════════════
+        // DEVICE QUATERNION — PROVEN FORMULA
+        // ═══════════════════════════════════════════════════════════════
+        // This matches the Three.js DeviceOrientationControls formula:
+        //   euler(beta, alpha, -gamma, 'YXZ')  then multiply by q_screen
+        // q_screen = -90° around X = rotates from "phone flat" frame to "camera looks forward" frame
+        const q_screenTransform = new THREE.Quaternion(-Math.sqrt(0.5), 0, 0, Math.sqrt(0.5));
+
+        function getDeviceQuaternion(alpha, beta, gamma) {
+            const euler = new THREE.Euler(
+                beta * DEG2RAD,
+                alpha * DEG2RAD,
+                -gamma * DEG2RAD,
+                'YXZ'
+            );
+            const q = new THREE.Quaternion().setFromEuler(euler);
+            q.multiply(q_screenTransform);
+            return q;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BAT ORIENTATION — SLERP SMOOTHED
+        // ═══════════════════════════════════════════════════════════════
+        // Store the bat's "stance" quaternion — what the bat looks like at rest
+        // This is what the bat reverts to when q_relative = identity
+        const q_batStance = new THREE.Quaternion();
+        // We compute this once: it's the bat's initial mesh orientation (blade up, handle down)
+        // No extra rotation needed since the bat Group is built with Y-up = long axis
+
+        function updateBatFromSensor(data) {
+            if (!calibrated) return;
+
+            const o = data.orientation;
+            if (o.alpha == null || o.beta == null || o.gamma == null) return;
+
+            const q_phone = getDeviceQuaternion(o.alpha, o.beta, o.gamma);
+
+            // q_relative = rotation from calibration pose to current pose
+            const q_relative = q_calibration.clone().multiply(q_phone);
+
+            // Apply relative rotation to the bat's stance
+            // targetBatQuat = q_batStance * q_relative would apply rotation in stance's local frame
+            // But since q_relative is already in world frame, we apply directly:
+            targetBatQuat.copy(q_relative);
+
+            // SLERP smooth toward target
+            bat.quaternion.slerp(targetBatQuat, BAT_SMOOTH);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CALIBRATION WIZARD
+        // ═══════════════════════════════════════════════════════════════
+        const calStepEls = [
+            document.getElementById('cal-step-0'),
+            document.getElementById('cal-step-1'),
+            document.getElementById('cal-step-2'),
+        ];
+        const calDots = [
+            document.getElementById('dot0'),
+            document.getElementById('dot1'),
+            document.getElementById('dot2'),
+        ];
+
+        // Steadiness tracking for auto-advance on step 0
+        let sensorCheckInterval = null;
+
+        function showCalStep(step) {
+            calStep = step;
+            calStepEls.forEach((el, i) => {
+                el.classList.toggle('active', i === step);
+            });
+            calDots.forEach((dot, i) => {
+                dot.classList.remove('active', 'done');
+                if (i < step) dot.classList.add('done');
+                if (i === step) dot.classList.add('active');
+            });
+        }
+
+        function calNext() {
+            if (calStep < 2) {
+                showCalStep(calStep + 1);
+            }
+        }
+
+        // Step 0: auto-advance when sensor connects
+        sensorCheckInterval = setInterval(() => {
+            if (sensorConnected && latestSensorData && calStep === 0) {
+                document.getElementById('sensor-dot').classList.add('steady');
+                setTimeout(() => {
+                    if (calStep === 0) calNext();
+                }, 800);
+            }
+            // Update live data on warmup step
+            if (calStep === 1 && latestSensorData) {
+                const o = latestSensorData.orientation;
+                document.getElementById('warmup-live').innerHTML =
+                    `α: ${o.alpha.toFixed(1)}°  β: ${o.beta.toFixed(1)}°  γ: ${o.gamma.toFixed(1)}°`;
+            }
+            // Update live data on stance step
+            if (calStep === 2 && latestSensorData) {
+                const o = latestSensorData.orientation;
+                document.getElementById('stance-live').innerHTML =
+                    `α: ${o.alpha.toFixed(1)}°  β: ${o.beta.toFixed(1)}°  γ: ${o.gamma.toFixed(1)}°`;
+            }
+        }, 200);
+
+        // Steadiness detection for calibration capture
+        let steadyHistory = [];
+        const STEADY_WINDOW = 15;    // ~1.5 seconds at 100ms polling
+        const STEADY_THRESHOLD = 2.0; // degrees
+
+        function checkSteadiness() {
+            if (!latestSensorData) return false;
+            const o = latestSensorData.orientation;
+            steadyHistory.push({ a: o.alpha, b: o.beta, g: o.gamma, t: Date.now() });
+
+            // Keep only last N
+            while (steadyHistory.length > STEADY_WINDOW) steadyHistory.shift();
+            if (steadyHistory.length < 5) return false;
+
+            // Check variance over window
+            let maxDeltaB = 0, maxDeltaG = 0;
+            for (let i = 1; i < steadyHistory.length; i++) {
+                maxDeltaB = Math.max(maxDeltaB, Math.abs(steadyHistory[i].b - steadyHistory[i - 1].b));
+                maxDeltaG = Math.max(maxDeltaG, Math.abs(steadyHistory[i].g - steadyHistory[i - 1].g));
+            }
+            return maxDeltaB < STEADY_THRESHOLD && maxDeltaG < STEADY_THRESHOLD;
+        }
+
+        let calCaptureInterval = null;
+        let calCountdown = 3;
+
+        function startCalCapture() {
+            const btn = document.getElementById('cal-capture-btn');
+            btn.style.display = 'none';
+            const cdEl = document.getElementById('cal-countdown');
+
+            // Collect samples over 3 seconds, then average
+            const samples = [];
+            calCountdown = 3;
+            cdEl.textContent = calCountdown;
+
+            const steadyDot = document.getElementById('steady-dot');
+
+            calCaptureInterval = setInterval(() => {
+                if (latestSensorData) {
+                    const o = latestSensorData.orientation;
+                    samples.push({ a: o.alpha, b: o.beta, g: o.gamma });
+
+                    const isSteady = checkSteadiness();
+                    steadyDot.classList.toggle('steady', isSteady);
+                }
+            }, 100);
+
+            // Countdown
+            const cdInterval = setInterval(() => {
+                calCountdown--;
+                if (calCountdown > 0) {
+                    cdEl.textContent = calCountdown;
+                } else {
+                    cdEl.textContent = '✓';
+                    clearInterval(cdInterval);
+                    clearInterval(calCaptureInterval);
+
+                    // Average the samples
+                    if (samples.length > 0) {
+                        // For alpha, use circular mean to handle 0/360 wraparound
+                        let sinSum = 0, cosSum = 0;
+                        let bSum = 0, gSum = 0;
+
+                        for (const s of samples) {
+                            sinSum += Math.sin(s.a * DEG2RAD);
+                            cosSum += Math.cos(s.a * DEG2RAD);
+                            bSum += s.b;
+                            gSum += s.g;
+                        }
+
+                        const avgAlpha = Math.atan2(sinSum / samples.length, cosSum / samples.length) / DEG2RAD;
+                        const avgBeta = bSum / samples.length;
+                        const avgGamma = gSum / samples.length;
+
+                        // Build calibration quaternion
+                        const q_ref = getDeviceQuaternion(avgAlpha, avgBeta, avgGamma);
+                        q_calibration = q_ref.clone().invert();
+                        calibrated = true;
+
+                        // Set bat to identity (the stance pose)
+                        bat.quaternion.identity();
+                        targetBatQuat.identity();
+                    }
+
+                    // Close overlay
+                    setTimeout(() => {
+                        calOverlay.classList.add('hidden');
+                        clearInterval(sensorCheckInterval);
+                        setPrompt('TAP TO BOWL');
+                    }, 600);
+                }
+            }, 1000);
+        }
+
+        function recalibrate() {
+            calibrated = false;
+            calOverlay.classList.remove('hidden');
+            showCalStep(sensorConnected ? 1 : 0);
+            steadyHistory = [];
+
+            const btn = document.getElementById('cal-capture-btn');
+            btn.style.display = '';
+            document.getElementById('cal-countdown').textContent = '';
+
+            // Restart sensor check
+            sensorCheckInterval = setInterval(() => {
+                if (sensorConnected && latestSensorData && calStep === 0) {
+                    document.getElementById('sensor-dot').classList.add('steady');
+                    setTimeout(() => {
+                        if (calStep === 0) calNext();
+                    }, 800);
+                }
+                if (calStep === 1 && latestSensorData) {
+                    const o = latestSensorData.orientation;
+                    document.getElementById('warmup-live').innerHTML =
+                        `α: ${o.alpha.toFixed(1)}°  β: ${o.beta.toFixed(1)}°  γ: ${o.gamma.toFixed(1)}°`;
+                }
+                if (calStep === 2 && latestSensorData) {
+                    const o = latestSensorData.orientation;
+                    document.getElementById('stance-live').innerHTML =
+                        `α: ${o.alpha.toFixed(1)}°  β: ${o.beta.toFixed(1)}°  γ: ${o.gamma.toFixed(1)}°`;
+                }
+            }, 200);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // SWING DETECTION
+        // ═══════════════════════════════════════════════════════════════
+        function updateSwingDetection(data, dtMs) {
+            swingDetectedThisFrame = false;
+
+            let ax, ay, az;
+            const acc = data.acceleration;
+            const accG = data.accelerationIncludingGravity;
+
+            if (acc && (Math.abs(acc.x) > 0.01 || Math.abs(acc.y) > 0.01 || Math.abs(acc.z) > 0.01)) {
+                ax = acc.x; ay = acc.y; az = acc.z;
+            } else if (accG) {
+                ax = accG.x - prevAccG.x;
+                ay = accG.y - prevAccG.y;
+                az = accG.z - prevAccG.z;
+                prevAccG = { x: accG.x, y: accG.y, z: accG.z };
+            } else {
+                return;
+            }
+
+            const magnitude = Math.sqrt(ax * ax + ay * ay + az * az);
+
+            accelBuffer[accelBufIdx % ACCEL_BUFFER_SIZE] = magnitude;
+            accelBufIdx++;
+
+            let peak = 0;
+            for (let i = 0; i < ACCEL_BUFFER_SIZE; i++) peak = Math.max(peak, accelBuffer[i]);
+            currentPeak = peak;
+
+            const pct = Math.min(100, (peak / 25) * 100);
+            updatePowerBar(pct);
+
+            if (swingCooldownTimer > 0) {
+                swingCooldownTimer -= dtMs;
+                return;
+            }
+
+            if (peak > SWING_THRESHOLD && peak > previousPeak * 1.5) {
+                if (ballState.state === 'bowled') {
+                    const dist = ballState.pos.distanceTo(bat.position);
+                    if (dist < HIT_RADIUS) {
+                        swingDetectedThisFrame = true;
+                        swingCooldownTimer = SWING_COOLDOWN;
+                        previousPeak = peak;
+                        triggerBatGhost();
+                        return;
+                    }
+                }
+            }
+
+            previousPeak = peak;
+        }
+
+        function triggerBatGhost() {
+            batGhost.position.copy(bat.position);
+            batGhost.quaternion.copy(bat.quaternion);
+            batGhost.visible = true;
+            batGhost.traverse(c => { if (c.isMesh) c.material.opacity = 0.4; });
+            ghostFadeTimer = 300;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BOWLING
+        // ═══════════════════════════════════════════════════════════════
+        function bowlBall() {
+            if (wickets >= MAX_WICKETS) return;
+
+            balls++;
+            updateScoreBar();
+            hidePrompt();
+
+            const bowlerPos = new THREE.Vector3(0, 0.3, -20);
+            const target = new THREE.Vector3(
+                (Math.random() - 0.5) * 0.6,
+                0.2,
+                0
+            );
+            const direction = target.clone().sub(bowlerPos).normalize();
+
+            ballState.pos.copy(bowlerPos);
+            ballState.vel.copy(direction.multiplyScalar(BOWL_SPEED));
+            ballState.state = 'bowled';
+
+            ballMesh.visible = true;
+            ballMesh.position.copy(ballState.pos);
+
+            trailPositions.length = 0;
+            trailMeshes.forEach(t => { t.visible = false; });
+
+            gameState = 'bowling';
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // HIT PHYSICS
+        // ═══════════════════════════════════════════════════════════════
+        function handleHit() {
+            const rawPower = currentPeak;
+            const power = THREE.MathUtils.clamp(rawPower, 4, 25);
+            const normalizedPower = (power - 4) / (25 - 4);
+
+            const batFaceWorld = new THREE.Vector3(1, 0, 0).applyQuaternion(bat.quaternion).normalize();
+
+            const incomingVel = ballState.vel.clone().normalize();
+            const dot = incomingVel.dot(batFaceWorld);
+            const reflectedDir = incomingVel.clone().sub(batFaceWorld.clone().multiplyScalar(2 * dot));
+            reflectedDir.normalize();
+
+            reflectedDir.y = Math.max(reflectedDir.y, 0.2);
+            reflectedDir.normalize();
+
+            const launchSpeed = 8 + normalizedPower * (LAUNCH_SPEED_MAX - 8);
+            ballState.vel.copy(reflectedDir.multiplyScalar(launchSpeed));
+            ballState.state = 'hit';
+            gameState = 'hit';
+
+            ballLight.intensity = 3.0;
+            setTimeout(() => { ballLight.intensity = 1.5; }, 500);
+
+            swingFlashEl.style.opacity = '0';
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BALL PHYSICS UPDATE
+        // ═══════════════════════════════════════════════════════════════
+        function updateBallPhysics(dt) {
+            if (ballState.state === 'idle' || ballState.state === 'dead') return;
+
+            ballState.vel.y += GRAVITY * dt;
+            ballState.pos.add(ballState.vel.clone().multiplyScalar(dt));
+
+            if (ballState.state === 'bowled') {
+                if (ballState.pos.y <= 0) {
+                    ballState.pos.y = 0;
+                    ballState.vel.y *= -BOUNCE_DAMPING;
+                    ballState.vel.x *= FRICTION;
+                    ballState.vel.z *= FRICTION;
+                    if (Math.abs(ballState.vel.y) < 0.5) ballState.vel.y = 0;
+                }
+
+                const dist = ballState.pos.distanceTo(bat.position);
+                if (dist < HIT_RADIUS && swingDetectedThisFrame) {
+                    const towardBat = bat.position.clone().sub(ballState.pos).normalize();
+                    const approachDot = ballState.vel.clone().normalize().dot(towardBat);
+                    if (approachDot > 0.3) {
+                        handleHit();
+                        return;
+                    }
+                }
+
+                if (ballState.pos.z > 2) {
+                    ballState.state = 'dead';
+                    gameState = 'dead';
+                    wickets++;
+                    updateScoreBar();
+                    showShotResult('BOWLED!', '#ff4444');
+                    setTimeout(() => { resetBall(); }, 2500);
+                }
+
+                if (ballState.pos.z > -3 && ballState.pos.z < 1.5 && ballState.state === 'bowled') {
+                    swingFlashEl.style.animation = 'swingPulse 0.3s ease-in-out infinite';
+                    swingFlashEl.style.opacity = '1';
+                } else {
+                    swingFlashEl.style.opacity = '0';
+                    swingFlashEl.style.animation = 'none';
+                }
+            }
+
+            if (ballState.state === 'hit') {
+                if (ballState.pos.y <= 0) {
+                    ballState.pos.y = 0;
+                    ballState.vel.set(0, 0, 0);
+                    ballState.state = 'dead';
+                    gameState = 'dead';
+
+                    const dx = ballState.pos.x;
+                    const dz = ballState.pos.z;
+                    const distanceTraveled = Math.sqrt(dx * dx + dz * dz);
+
+                    let runs = 0, text = '', color = '#ffffff';
+
+                    if (distanceTraveled >= 40) { runs = 6; text = 'SIX! +6'; color = '#ffd700'; }
+                    else if (distanceTraveled >= 30) { runs = 4; text = 'FOUR! +4'; color = '#22c55e'; }
+                    else if (distanceTraveled >= 18) { runs = 2; text = '+2 RUNS'; color = '#ffffff'; }
+                    else if (distanceTraveled >= 8) { runs = 1; text = '+1 RUN'; color = '#ffffff'; }
+                    else { runs = 0; text = 'MISSED!'; color = '#ff4444'; }
+
+                    score += runs;
+                    updateScoreBar();
+                    showShotResult(text, color);
+
+                    setTimeout(() => { resetBall(); }, 3000);
+                }
+            }
+
+            ballMesh.position.copy(ballState.pos);
+        }
+
+        function resetBall() {
+            ballState.state = 'idle';
+            ballState.pos.set(0, 0, 0);
+            ballState.vel.set(0, 0, 0);
+            ballMesh.visible = false;
+            gameState = 'idle';
+            trailPositions.length = 0;
+            trailMeshes.forEach(t => { t.visible = false; });
+            swingFlashEl.style.opacity = '0';
+            swingFlashEl.style.animation = 'none';
+
+            if (wickets >= MAX_WICKETS) {
+                gameState = 'gameover';
+                finalScoreEl.textContent = `FINAL SCORE: ${score}`;
+                gameOverEl.classList.add('show');
+                return;
+            }
+
+            setPrompt('TAP TO BOWL');
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // TRAIL UPDATE
+        // ═══════════════════════════════════════════════════════════════
+        function updateTrail() {
+            if (ballState.state === 'bowled' || ballState.state === 'hit') {
+                trailPositions.push(ballState.pos.clone());
+                if (trailPositions.length > TRAIL_LENGTH) trailPositions.shift();
+            }
+
+            for (let i = 0; i < TRAIL_LENGTH; i++) {
+                if (i < trailPositions.length) {
+                    const idx = trailPositions.length - 1 - i;
+                    const t = (trailPositions.length - 1 - idx) / TRAIL_LENGTH;
+                    trailMeshes[i].position.copy(trailPositions[idx]);
+                    trailMeshes[i].material.opacity = (1 - t) * 0.6;
+                    const s = 0.3 + (1 - t) * 0.7;
+                    trailMeshes[i].scale.setScalar(s);
+                    trailMeshes[i].visible = true;
+                } else {
+                    trailMeshes[i].visible = false;
+                }
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BAT GHOST FADE
+        // ═══════════════════════════════════════════════════════════════
+        function updateGhost(dtMs) {
+            if (ghostFadeTimer > 0) {
+                ghostFadeTimer -= dtMs;
+                const t = Math.max(0, ghostFadeTimer / 300);
+                batGhost.traverse(c => { if (c.isMesh) c.material.opacity = t * 0.4; });
+                if (ghostFadeTimer <= 0) batGhost.visible = false;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // GAME RESET
+        // ═══════════════════════════════════════════════════════════════
+        function resetGame() {
+            score = 0;
+            balls = 0;
+            wickets = 0;
+            gameState = 'idle';
+            ballState.state = 'idle';
+            ballMesh.visible = false;
+            updateScoreBar();
+            gameOverEl.classList.remove('show');
+            setPrompt('TAP TO BOWL');
+            previousPeak = 0;
+            swingCooldownTimer = 0;
+            accelBuffer.fill(0);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // BOWLING VIA CLICK
+        // ═══════════════════════════════════════════════════════════════
+        canvas.addEventListener('click', () => {
+            if (gameState === 'idle' && calibrated) {
+                bowlBall();
+            }
+        });
+
+        // ═══════════════════════════════════════════════════════════════
+        // CONNECTION STATUS CHECK
+        // ═══════════════════════════════════════════════════════════════
+        setInterval(() => {
+            if (performance.now() - lastSensorTime > 2000 && sensorConnected) {
+                sensorConnected = false;
+                connStatusEl.textContent = 'SENSOR LOST';
+                connStatusEl.className = '';
+            }
+        }, 1000);
+
+        // ═══════════════════════════════════════════════════════════════
+        // DEBUG INFO
+        // ═══════════════════════════════════════════════════════════════
+        let debugCounter = 0;
+        function updateDebug() {
+            debugCounter++;
+            if (debugCounter % 10 !== 0) return; // every 10 frames
+            if (!latestSensorData) return;
+            const o = latestSensorData.orientation;
+            const bq = bat.quaternion;
+            debugBarEl.innerHTML =
+                `Phone: α=${o.alpha.toFixed(0)}° β=${o.beta.toFixed(0)}° γ=${o.gamma.toFixed(0)}°<br>` +
+                `Bat Q: ${bq.x.toFixed(2)} ${bq.y.toFixed(2)} ${bq.z.toFixed(2)} ${bq.w.toFixed(2)}<br>` +
+                `Peak: ${currentPeak.toFixed(1)} m/s² | Cal: ${calibrated ? 'YES' : 'NO'}`;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // MAIN GAME LOOP
+        // ═══════════════════════════════════════════════════════════════
+        let prevTime = performance.now();
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+
+            const now = performance.now();
+            const dtMs = now - prevTime;
+            const dt = Math.min(dtMs / 1000, 0.05);
+            prevTime = now;
+
+            if (gameState === 'gameover') {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // Process sensor
+            if (latestSensorData) {
+                updateBatFromSensor(latestSensorData);
+                updateSwingDetection(latestSensorData, dtMs);
+            }
+
+            // Physics
+            updateBallPhysics(dt);
+
+            // Trail
+            updateTrail();
+
+            // Ghost
+            updateGhost(dtMs);
+
+            // Debug
+            updateDebug();
+
+            renderer.render(scene, camera);
+        }
+
+        // Start
+        updateScoreBar();
+        showCalStep(0);
+        gameLoop();
+    </script>
+</body>
+
+</html>

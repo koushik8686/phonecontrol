@@ -132,7 +132,7 @@
   <script>
   const statusEl = document.getElementById('status');
   const debugEl = document.getElementById('json-preview');
-  const serverURL = "/sensor"; 
+  const serverURL = "/cricket/sensor"; 
   let sensorsStarted = false;
 
   // Data Store
@@ -183,7 +183,7 @@
       statusEl.style.color = '#065f46';
       
       // Send data every 100ms
-      setInterval(sendDataToServer, 100);
+      setInterval(sendDataToServer, 10);
   }
 
   function handleOrientation(event) {

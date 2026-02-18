@@ -52,6 +52,24 @@ app.get("/sensor", (req, res) => {
   res.json(latestData);
 });
 
+
+let cricket_data
+app.get("/cricket/phone", (req, res) => {
+  res.sendFile(path.join(__dirname, "static", "cricket", "phone.html"));
+})
+app.get("/cricket/laptop", (req, res) => {
+  res.sendFile(path.join(__dirname, "static", "cricket", "laptop.html"));
+})
+app.post("/cricket/sensor", (req, res) => {
+  if (req.body) {
+    cricket_data = req.body;
+  }
+  res.json({ status: "ok", data: cricket_data });
+})
+app.get("/cricket/sensor", (req, res) => {
+  res.json(cricket_data || {});
+})
+
 // ---- HTTPS Server ----
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

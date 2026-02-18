@@ -247,6 +247,123 @@
             display: flex;
         }
 
+        #lobby-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(10, 14, 26, 0.95);
+            display: flex;
+            /* Hidden by JS when game starts, flex when waiting */
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 400;
+        }
+
+        #lobby-screen h1 {
+            font-size: 64px;
+            color: #ef4444;
+            margin-bottom: 40px;
+            text-shadow: 0 0 30px rgba(239, 68, 68, 0.8);
+            text-transform: uppercase;
+        }
+
+        #lobby-players {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            max-width: 800px;
+            justify-content: center;
+            margin-bottom: 50px;
+        }
+
+        .lobby-player-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 25px;
+            border-radius: 12px;
+            color: white;
+            font-size: 20px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .player-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            box-shadow: 0 0 10px currentColor;
+        }
+
+        #start-game-btn {
+            padding: 20px 60px;
+            font-size: 28px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 40px rgba(34, 197, 94, 0.4);
+        }
+
+        #start-game-btn:hover {
+            transform: scale(1.05);
+            box-shadow: 0 15px 50px rgba(34, 197, 94, 0.6);
+        }
+
+        #timer {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 48px;
+            font-weight: 900;
+            color: #ef4444;
+            z-index: 200;
+            font-family: monospace;
+            text-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+        }
+
+        #zombie-legend {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(10, 14, 26, 0.8);
+            padding: 15px;
+            border-radius: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 200;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #fff;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .legend-emoji {
+            font-size: 24px;
+        }
+
+        .legend-points {
+            color: #22c55e;
+        }
+
         #game-over h1 {
             font-size: 64px;
             color: #ef4444;
@@ -288,6 +405,20 @@
     <div id="laser"></div>
     <div id="wave-indicator"></div>
 
+    <div id="lobby-screen">
+        <h1>Waiting for Players...</h1>
+        <div id="lobby-players">
+            <!-- Player cards injected here -->
+        </div>
+        <button id="start-game-btn">START GAME (5 MIN)</button>
+    </div>
+
+    <div id="timer">05:00</div>
+
+    <div id="zombie-legend">
+        <!-- Injected by JS -->
+    </div>
+
     <div id="hud">
         <h2>🧟 Zombie Hunt</h2>
         <div class="hud-row">
@@ -328,6 +459,10 @@
         const gameCanvas = document.getElementById("game-canvas");
         const waveIndicator = document.getElementById("wave-indicator");
         const gameOverScreen = document.getElementById("game-over");
+        const lobbyScreen = document.getElementById("lobby-screen");
+        const lobbyPlayersEl = document.getElementById("lobby-players");
+        const timerEl = document.getElementById("timer");
+        const hudEl = document.getElementById("hud");
 
         // HUD elements
         const scoreEl = document.getElementById("score");
@@ -336,31 +471,139 @@
         const zombiesLeftEl = document.getElementById("zombies-left");
 
         // Multiplayer State
-        let localPlayers = {}; // Stores { id: { cursorEl, score, lastShootTime, name } }
-        let totalScore = 0;
-        let totalKills = 0;
+        let localPlayers = {};
+        let lastServerStatus = "";
+
+        // Logic Constants (Matched to Controller/Laser)
+        const SMOOTHING = 0.25;
+        const MAX_YAW = 60;
+        const MAX_PITCH = 35;
 
         // Game state
         let zombies = [];
         let wave = 1;
-        let gameActive = true;
+        let isGameRunning = false; // Local flag based on server status
 
-        const ZOMBIE_EMOJIS = ["🧟", "🧟♂️", "🧟♀️"];
-        const HIT_DISTANCE = 60; // pixels
+        // --- AUDIO SYSTEM ---
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        const audioCtx = new AudioContext();
+
+        function playSound(type) {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            const osc = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+
+            osc.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+
+            const now = audioCtx.currentTime;
+
+            if (type === 'crawler') {
+                // High pitch jitter
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(600, now);
+                osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'runner') {
+                // Zap sound
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.linearRampToValueAtTime(800, now + 0.1);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.linearRampToValueAtTime(0.01, now + 0.1);
+                osc.start(now);
+                osc.stop(now + 0.1);
+            } else if (type === 'tank') {
+                // Low thud
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(100, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
+                gainNode.gain.setValueAtTime(0.3, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+                osc.start(now);
+                osc.stop(now + 0.3);
+            } else if (type === 'boss') {
+                // Deep long boom
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(80, now);
+                osc.frequency.exponentialRampToValueAtTime(10, now + 0.6);
+                gainNode.gain.setValueAtTime(0.5, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+                osc.start(now);
+                osc.stop(now + 0.6);
+            } else { // Normal/Walker
+                // Standard pop
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+                gainNode.gain.setValueAtTime(0.1, now);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+        }
+
+        const ZOMBIE_TYPES = [
+            { id: 'crawler', name: "Crawler", emoji: "🕷️", points: 5, size: 50, speedMod: 2.5, probability: 30 },
+            { id: 'walker', name: "Walker", emoji: "🧟", points: 10, size: 80, speedMod: 1.0, probability: 40 },
+            { id: 'runner', name: "Runner", emoji: "👺", points: 20, size: 70, speedMod: 1.8, probability: 15 },
+            { id: 'tank', name: "Tank", emoji: "🦍", points: 50, size: 120, speedMod: 0.5, probability: 10 },
+            { id: 'boss', name: "Boss", emoji: "👾", points: 100, size: 160, speedMod: 0.2, probability: 5 }
+        ];
+
+        // Populate Legend
+        const legendEl = document.getElementById('zombie-legend');
+        ZOMBIE_TYPES.forEach(t => {
+            legendEl.innerHTML += `
+                <div class="legend-item">
+                    <span class="legend-emoji">${t.emoji}</span>
+                    <span>${t.name}</span>
+                    <span class="legend-points">+${t.points}</span>
+                </div>
+            `;
+        });
+
+        const MAX_ZOMBIES = 30;
+        let killsForWave = 0;
 
         function clamp(v, min, max) {
             return Math.max(min, Math.min(max, v));
         }
 
+        // --- ZOMBIE LOGIC ---
         function spawnZombie() {
+            if (!isGameRunning) return;
+
+            // Weighted Random Selection
+            // As waves progress, shift probability towards harder types
+
+            // Allow harder types based on wave number
+            let availableTypes = ZOMBIE_TYPES.filter((t, idx) => {
+                if (idx === 0 || idx === 1) return true; // Always allow crawler/walker
+                if (idx === 2 && wave >= 2) return true; // Runner from wave 2
+                if (idx === 3 && wave >= 4) return true; // Tank from wave 4
+                if (idx === 4 && wave >= 6) return true; // Boss from wave 6
+                return false;
+            });
+
+            const type = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+
             const zombie = {
                 id: Math.random().toString(36).substr(2, 9),
-                x: Math.random() * (window.innerWidth - 80),
-                y: Math.random() * (window.innerHeight - 80),
-                vx: (Math.random() - 0.5) * 2, // velocity
-                vy: (Math.random() - 0.5) * 2,
-                emoji: ZOMBIE_EMOJIS[Math.floor(Math.random() * ZOMBIE_EMOJIS.length)],
+                x: Math.random() * (window.innerWidth - type.size),
+                y: Math.random() * (window.innerHeight - type.size),
+                vx: (Math.random() - 0.5) * 2 * type.speedMod,
+                vy: (Math.random() - 0.5) * 2 * type.speedMod,
+                emoji: type.emoji,
                 element: null,
+                size: type.size,
+                points: type.points,
+                typeId: type.id,
+                dead: false
             };
 
             const el = document.createElement("div");
@@ -369,6 +612,12 @@
             el.id = zombie.id;
             el.style.left = `${zombie.x}px`;
             el.style.top = `${zombie.y}px`;
+
+            // Apply Dynamic Size
+            el.style.width = `${zombie.size}px`;
+            el.style.height = `${zombie.size}px`;
+            el.style.fontSize = `${zombie.size * 0.7}px`;
+
             gameCanvas.appendChild(el);
 
             zombie.element = el;
@@ -376,6 +625,7 @@
         }
 
         function spawnWave(count) {
+            if (!isGameRunning) return;
             waveIndicator.textContent = `Wave ${wave}`;
             waveIndicator.classList.add("show");
 
@@ -384,123 +634,157 @@
             }, 2000);
 
             for (let i = 0; i < count; i++) {
-                setTimeout(() => spawnZombie(), i * 300);
+                setTimeout(() => {
+                    if (isGameRunning) spawnZombie();
+                }, i * 300);
             }
         }
 
         function updateZombies() {
+            if (!isGameRunning) return;
+
             zombies.forEach(zombie => {
-                // Move zombie
+                if (zombie.dead) return; // Don't move dead ones (they are exploding)
+
                 zombie.x += zombie.vx;
                 zombie.y += zombie.vy;
 
-                // Bounce off edges
-                if (zombie.x <= 0 || zombie.x >= window.innerWidth - 80) {
-                    zombie.vx *= -1;
-                }
-                if (zombie.y <= 0 || zombie.y >= window.innerHeight - 80) {
-                    zombie.vy *= -1;
-                }
+                // Bounce off walls (using dynamic size)
+                if (zombie.x <= 0 || zombie.x >= window.innerWidth - zombie.size) zombie.vx *= -1;
+                if (zombie.y <= 0 || zombie.y >= window.innerHeight - zombie.size) zombie.vy *= -1;
 
-                // Update position
                 zombie.element.style.left = `${zombie.x}px`;
                 zombie.element.style.top = `${zombie.y}px`;
             });
 
-            // Check if wave is complete
-            if (zombies.length === 0 && gameActive) {
-                wave++;
-                waveEl.textContent = wave;
-                setTimeout(() => {
-                    spawnWave(3 + wave); // More zombies each wave
-                }, 2000);
-            }
+            // Only count LIVE zombies for UI
+            const liveZombies = zombies.filter(z => !z.dead);
+            zombiesLeftEl.textContent = liveZombies.length;
 
-            zombiesLeftEl.textContent = zombies.length;
+            // Note: We removed the "clear screen -> next wave" logic as requested
         }
 
-        function killZombie(zombie, playerId, points = 10) {
-            zombie.element.classList.add("hit");
+        function killZombie(zombie, playerId) {
+            if (zombie.dead) return; // Prevent double kill
+            zombie.dead = true; // Mark dead immediately
 
-            // Show hit marker
+            playSound(zombie.typeId);
+
+            zombie.element.classList.add("hit");
             const hitMarker = document.createElement("div");
             hitMarker.className = "hit-marker";
-            hitMarker.textContent = "+" + points;
-            hitMarker.style.left = `${zombie.x + 40}px`;
+            hitMarker.textContent = "+" + zombie.points;
+            hitMarker.style.left = `${zombie.x + (zombie.size / 2)}px`;
             hitMarker.style.top = `${zombie.y}px`;
 
-            // Color hit marker by player color
             if (localPlayers[playerId]) {
                 hitMarker.style.color = localPlayers[playerId].color;
                 hitMarker.style.textShadow = `0 0 10px ${localPlayers[playerId].color}`;
             }
 
             document.body.appendChild(hitMarker);
+            setTimeout(() => hitMarker.remove(), 800);
 
-            setTimeout(() => {
-                hitMarker.remove();
-            }, 800);
-
+            // Remove from array after animation
             setTimeout(() => {
                 if (zombie.element) zombie.element.remove();
                 zombies = zombies.filter(z => z.id !== zombie.id);
             }, 500);
 
-            // Notify server
+            // --- PROGRESSION LOGIC ---
+            killsForWave++;
+            if (killsForWave >= 15) { // Every 15 kills = new wave
+                wave++;
+                killsForWave = 0;
+                waveEl.textContent = wave;
+
+                // Show Wave Indicator
+                waveIndicator.textContent = `Wave ${wave}`;
+                waveIndicator.classList.add("show");
+                setTimeout(() => waveIndicator.classList.remove("show"), 2000);
+            }
+
+            // --- SPAWN LOGIC (Maintain Density) ---
+            // Spawn 2 more for every kill, up to MAX_ZOMBIES
+            const currentLiveCount = zombies.filter(z => !z.dead).length;
+            const slotsAvailable = MAX_ZOMBIES - currentLiveCount;
+            const toSpawn = Math.min(2, slotsAvailable);
+
+            if (toSpawn > 0) {
+                // Small delay to stagger spawns slightly
+                for (let i = 0; i < toSpawn; i++) {
+                    setTimeout(spawnZombie, 100 + (i * 200));
+                }
+            }
+
             fetch("/hit2", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: playerId, points })
+                body: JSON.stringify({ id: playerId, points: zombie.points })
             }).catch(console.error);
         }
 
         function checkHit(shootX, shootY, playerId) {
-            // shootX and shootY are normalized 0-1, convert to screen coords
-            const screenX = shootX * window.innerWidth;
-            const screenY = shootY * window.innerHeight;
+            // Note: shootX/Y here are already SCREEN COORDINATES (smoothed)
 
             // Show muzzle flash
             const flash = document.createElement("div");
             flash.className = "muzzle-flash";
-            flash.style.left = `${screenX}px`;
-            flash.style.top = `${screenY}px`;
-            if (localPlayers[playerId]) {
-                // Tint flash with player color? Maybe simple yellow is best for flash
-            }
+            flash.style.left = `${shootX}px`;
+            flash.style.top = `${shootY}px`;
             document.body.appendChild(flash);
             setTimeout(() => flash.remove(), 200);
 
+            if (!isGameRunning) return false;
+
             let hit = false;
             for (const zombie of zombies) {
-                const zombieCenterX = zombie.x + 40;
-                const zombieCenterY = zombie.y + 40;
+                if (zombie.dead) continue; // Skip already hit zombies
 
-                const distance = Math.sqrt(
-                    Math.pow(screenX - zombieCenterX, 2) +
-                    Math.pow(screenY - zombieCenterY, 2)
-                );
+                const radius = zombie.size / 2;
+                const zombieCenterX = zombie.x + radius;
+                const zombieCenterY = zombie.y + radius;
 
-                if (distance < HIT_DISTANCE) {
+                const distance = Math.sqrt(Math.pow(shootX - zombieCenterX, 2) + Math.pow(shootY - zombieCenterY, 2));
+
+                // Hitbox generous (radius + 10px)
+                if (distance < radius + 10) {
                     killZombie(zombie, playerId);
                     hit = true;
-                    break; // Only kill one zombie per shot
+                    break; // One shot kills one zombie maximum
                 }
             }
             return hit;
         }
 
-        function updateHUD(serverPlayers) {
-            // Recalculate totals
-            totalScore = 0;
-            totalKills = 0;
+        // --- UI & STATE UPDATES ---
+        function formatTime(ms) {
+            const totalSeconds = Math.floor(ms / 1000);
+            const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+            const s = (totalSeconds % 60).toString().padStart(2, '0');
+            return `${m}:${s}`;
+        }
 
-            // We could also build a leaderboard here if we wanted
+        function updateLobbyUI(serverPlayers) {
+            lobbyPlayersEl.innerHTML = "";
+            Object.values(serverPlayers).forEach(p => {
+                const card = document.createElement("div");
+                card.className = "lobby-player-card";
+                card.innerHTML = `
+                    <div class="player-dot" style="background:${p.color}; box-shadow: 0 0 10px ${p.color}"></div>
+                    ${p.name}
+                `;
+                lobbyPlayersEl.appendChild(card);
+            });
+        }
+
+        function updateHUD(serverPlayers) {
             let leaderboardHtml = "<h2>🧟 Zombie Hunt</h2>";
 
-            Object.values(serverPlayers).forEach(p => {
-                totalScore += p.score || 0;
-                totalKills += p.kills || 0;
+            // Sort by score
+            const sorted = Object.values(serverPlayers).sort((a, b) => b.score - a.score);
 
+            sorted.forEach(p => {
                 leaderboardHtml += `
                     <div class="hud-row" style="color:${p.color}">
                         <span class="hud-label" style="color:${p.color}">${p.name}:</span>
@@ -509,7 +793,6 @@
                 `;
             });
 
-            // Add aggregate stats
             leaderboardHtml += `
                  <div class="hud-row" style="border-top:1px solid rgba(255,255,255,0.2); margin-top:5px; padding-top:5px;">
                     <span class="hud-label">Wave:</span>
@@ -520,17 +803,84 @@
                     <span class="hud-value" id="zombies-left">${zombies.length}</span>
                 </div>
             `;
-
-            // Update HUD content
-            // Note: We are replacing the fixed HUD structure with this dynamic one to show all players
-            const hud = document.getElementById('hud');
-            hud.innerHTML = leaderboardHtml;
+            hudEl.innerHTML = leaderboardHtml;
         }
 
+        async function pollGameState() {
+            try {
+                const res = await fetch("/gamestate2");
+                const data = await res.json();
+
+                // data structure: { players: {}, status: 'waiting'|'playing'|'ended', timeRemaining: ms }
+                const serverPlayers = data.players || {};
+                const status = data.status || "waiting";
+
+                // --- STATE TRANSITIONS ---
+                if (status !== lastServerStatus) {
+                    lastServerStatus = status;
+                    if (status === "waiting") {
+                        isGameRunning = false;
+                        lobbyScreen.style.display = "flex";
+                        gameOverScreen.classList.remove("show");
+                        hudEl.style.display = "none";
+                        timerEl.style.display = "none";
+                        // Clear zombies
+                        zombies.forEach(z => z.element.remove());
+                        zombies = [];
+                    } else if (status === "playing") {
+                        isGameRunning = true;
+                        lobbyScreen.style.display = "none";
+                        gameOverScreen.classList.remove("show");
+                        hudEl.style.display = "block";
+                        timerEl.style.display = "block";
+                        if (zombies.length === 0) spawnWave(5);
+                    } else if (status === "ended") {
+                        isGameRunning = false;
+                        lobbyScreen.style.display = "none";
+                        gameOverScreen.classList.add("show");
+                        hudEl.style.display = "none";
+                        timerEl.style.display = "none";
+
+                        // Show Final Results
+                        const sorted = Object.values(serverPlayers).sort((a, b) => b.score - a.score);
+                        let resultsHtml = "<h1>🏆 RESULTS</h1>";
+                        sorted.forEach((p, idx) => {
+                            resultsHtml += `<p style="color:${p.color}; font-size:${idx === 0 ? 40 : 24}px">
+                                #${idx + 1} ${p.name}: ${p.score} pts
+                             </p>`;
+                        });
+                        resultsHtml += `<button id="restart-btn" onclick="resetGame()">Back to Lobby</button>`;
+                        gameOverScreen.innerHTML = resultsHtml;
+                    }
+                }
+
+                if (status === "waiting") {
+                    updateLobbyUI(serverPlayers);
+                } else if (status === "playing") {
+                    timerEl.textContent = formatTime(data.timeRemaining);
+                    updateHUD(serverPlayers);
+                }
+
+                // --- CURSOR UPDATES (Always active so people can wiggle in lobby) ---
+                const activeIds = new Set(Object.keys(serverPlayers));
+                for (const pid in localPlayers) {
+                    if (!activeIds.has(pid)) {
+                        localPlayers[pid].cursorEl.remove();
+                        delete localPlayers[pid];
+                    }
+                }
+
+                for (const pid in serverPlayers) {
+                    updateOrCreateCursor(pid, serverPlayers[pid]);
+                }
+
+            } catch (err) { console.error(err); }
+        }
+
+        // --- CURSOR LOGIC ---
         function updateOrCreateCursor(playeId, data) {
             let p = localPlayers[playeId];
             if (!p) {
-                // Create new cursor
                 const el = document.createElement('div');
                 el.id = `cursor-${playeId}`;
                 el.style.position = 'fixed';
@@ -543,9 +893,7 @@
                 el.style.zIndex = '100';
                 el.style.border = '2px solid rgba(255,255,255,0.5)';
                 el.style.pointerEvents = 'none';
-                el.style.transition = 'top 0.1s linear, left 0.1s linear'; // Smooth it out a bit
 
-                // Add name tag
                 const nameTag = document.createElement('div');
                 nameTag.textContent = data.name;
                 nameTag.style.position = 'absolute';
@@ -561,85 +909,74 @@
 
                 document.body.appendChild(el);
 
+                // Initialize position at center
+                const startX = window.innerWidth / 2;
+                const startY = window.innerHeight / 2;
+
                 p = {
                     id: playeId,
                     cursorEl: el,
+                    nameTag: nameTag,
                     lastShootTime: data.lastShootTime || 0,
-                    color: data.color
+                    color: data.color,
+                    targetX: startX,
+                    targetY: startY,
+                    currentX: startX,
+                    currentY: startY
                 };
                 localPlayers[playeId] = p;
             }
 
-            // Update position
-            // Data from server is normalized 0-1
-            const screenX = (data.cursorX || 0.5) * window.innerWidth;
-            const screenY = (data.cursorY || 0.5) * window.innerHeight;
+            if (p.nameTag.textContent !== data.name) {
+                p.nameTag.textContent = data.name;
+            }
 
-            p.cursorEl.style.left = `${screenX}px`;
-            p.cursorEl.style.top = `${screenY}px`;
+            const xVal = (data.cursorX !== undefined && data.cursorX !== null) ? data.cursorX : 0.5;
+            const yVal = (data.cursorY !== undefined && data.cursorY !== null) ? data.cursorY : 0.5;
 
-            // Check for shot
+            p.targetX = xVal * window.innerWidth;
+            p.targetY = yVal * window.innerHeight;
+
             if (data.lastShootTime > p.lastShootTime) {
                 p.lastShootTime = data.lastShootTime;
-                // Animate cursor recoil
                 p.cursorEl.style.transform = 'translate(-50%, -50%) scale(1.5)';
                 setTimeout(() => p.cursorEl.style.transform = 'translate(-50%, -50%) scale(1)', 100);
 
-                checkHit(data.cursorX, data.cursorY, playeId);
+                // Allow shooting even in lobby (fun), but checkHit logic prevents killing if !isGameRunning
+                checkHit(p.currentX, p.currentY, playeId);
             }
         }
 
-        // Poll game state
-        async function pollGameState() {
-            try {
-                const res = await fetch("/gamestate2");
-                const serverPlayers = await res.json();
-
-                // Identify disconnected players
-                const activeIds = new Set(Object.keys(serverPlayers));
-                for (const pid in localPlayers) {
-                    if (!activeIds.has(pid)) {
-                        // Remove disconnected player cursor
-                        localPlayers[pid].cursorEl.remove();
-                        delete localPlayers[pid];
-                    }
-                }
-
-                // Update players
-                for (const pid in serverPlayers) {
-                    updateOrCreateCursor(pid, serverPlayers[pid]);
-                }
-
-                updateHUD(serverPlayers);
-
-            } catch (err) {
-                console.error("Game state poll failed", err);
-            }
-        }
-
+        // --- GAME LOOP ---
         function gameLoop() {
-            if (gameActive) {
+            // Smoothing
+            for (const pid in localPlayers) {
+                const p = localPlayers[pid];
+                p.currentX += (p.targetX - p.currentX) * SMOOTHING;
+                p.currentY += (p.targetY - p.currentY) * SMOOTHING;
+                p.cursorEl.style.left = `${p.currentX}px`;
+                p.cursorEl.style.top = `${p.currentY}px`;
+            }
+
+            if (isGameRunning) {
                 updateZombies();
             }
             requestAnimationFrame(gameLoop);
         }
 
-        // Restart game
-        document.getElementById("restart-btn").addEventListener("click", () => {
-            gameOverScreen.classList.remove("show");
-            gameActive = true;
-            zombies.forEach(z => z.element.remove());
-            zombies = [];
-            wave = 1;
-
-            fetch("/reset2", { method: "POST" }).catch(console.error);
-            spawnWave(5);
+        // Actions
+        document.getElementById("start-game-btn").addEventListener("click", () => {
+            fetch("/start-game", { method: "POST" });
         });
 
+        window.resetGame = function () {
+            fetch("/reset2", { method: "POST" });
+        };
+
         // Initialize
-        setInterval(pollGameState, 50); // 20 updates per second
+        setInterval(pollGameState, 50);
         gameLoop();
-        spawnWave(5); // Start with 5 zombies
+
     </script>
 </body>
 

@@ -141,37 +141,91 @@ app.post("/recenter2", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// 5. Game Loop Poll (Returns all players)
+// 5. Game Loop Poll (Returns all players + Game Status)
+let gameStatus = "waiting"; // waiting, playing, ended
+let gameEndTime = 0;
+const GAME_DURATION = 5 * 60 * 1000; // 5 minutes
+
 app.get("/gamestate2", (req, res) => {
-  // Optional: Filter out players not seen in 10 seconds
+  // Filter out inactive players
   const now = Date.now();
   for (const id in players) {
     if (now - players[id].lastSeen > 10000) {
       delete players[id];
     }
   }
-  res.json(players);
+
+  // Check Timer
+  let timeRemaining = 0;
+  if (gameStatus === "playing") {
+    timeRemaining = Math.max(0, gameEndTime - now);
+    if (timeRemaining === 0) {
+      gameStatus = "ended";
+    }
+  }
+
+  res.json({
+    players,
+    status: gameStatus,
+    timeRemaining
+  });
 });
 
 // 6. Record Hit (Client confirms a kill)
 app.post("/hit2", (req, res) => {
   const { id, points } = req.body;
-  if (players[id]) {
+  if (players[id] && gameStatus === "playing") {
     players[id].score += (points || 10);
     players[id].kills += 1;
   }
   res.json({ status: "ok" });
 });
 
-// 7. Reset Multiplayer Game
+// 7. Reset / Back to Lobby
 app.post("/reset2", (req, res) => {
-  // Reset scores but keep players
+  gameStatus = "waiting";
+  // Reset scores logic if needed, usually effectively done on start
+  res.json({ status: "ok" });
+});
+
+// 9. Start Game
+app.post("/start-game", (req, res) => {
+  gameStatus = "playing";
+  gameEndTime = Date.now() + GAME_DURATION;
+
+  // Reset stats for new game
   for (const id in players) {
     players[id].score = 0;
     players[id].kills = 0;
   }
   res.json({ status: "ok" });
 });
+
+// 8. Update Name
+app.post("/update-name", (req, res) => {
+  const { id, name } = req.body;
+  if (players[id] && name) {
+    players[id].name = name;
+  }
+  res.json({ status: "ok" });
+});
+
+let cricket_data
+app.get("/cricket/phone", (req, res) => {
+  res.sendFile(path.join(__dirname, "static", "cricket", "phone.html"));
+})
+app.get("/cricket/laptop", (req, res) => {
+  res.sendFile(path.join(__dirname, "static", "cricket", "laptop.html"));
+})
+app.post("/cricket/sensor", (req, res) => {
+  if (req.body) {
+    cricket_data = req.body;
+  }
+  res.json({ status: "ok", data: cricket_data });
+})
+app.get("/cricket/sensor", (req, res) => {
+  res.json(cricket_data || {});
+})
 
 // ==========================================
 //  SERVER START
